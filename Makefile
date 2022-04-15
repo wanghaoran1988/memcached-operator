@@ -1,5 +1,5 @@
 include boilerplate/generated-includes.mk
-OPERATOR_NAME=ocm-agent-operator
+OPERATOR_NAME=memcached-operator
 
 .PHONY: help
 help: ## Display this help.

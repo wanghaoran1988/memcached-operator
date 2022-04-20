@@ -1,6 +1,0 @@
-apiVersion: cache.openshift.io/v1alpha1
-kind: Memcached
-metadata:
-  name: memcached-sample
-spec:
-  # TODO(user): Add fields here

@@ -44,7 +44,7 @@ OPERATOR_IMAGE_TAG=v$(OPERATOR_VERSION)
 IMG?=$(OPERATOR_IMAGE):$(OPERATOR_IMAGE_TAG)
 OPERATOR_IMAGE_URI=${IMG}
 OPERATOR_IMAGE_URI_LATEST=$(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY)/$(IMAGE_NAME):latest
-OPERATOR_DOCKERFILE ?=Dockerfile
+OPERATOR_DOCKERFILE ?=build/Dockerfile
 REGISTRY_IMAGE=$(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY)/$(IMAGE_NAME)-registry
 
 # Consumer can optionally define ADDITIONAL_IMAGE_SPECS like:
@@ -153,6 +153,19 @@ go-generate:
 	${GOENV} go generate $(TESTTARGETS)
 	# Don't forget to commit generated files
 
+# go-get-tool will 'go install' any package $2 and install it to $1.
+define go-get-tool
+@[ -f $(1) ] || { \
+set -e ;\
+TMP_DIR=$$(mktemp -d) ;\
+cd $$TMP_DIR ;\
+go mod init tmp ;\
+echo "Downloading $(2)" ;\
+GOBIN=${PWD}/bin go install $(2) ;\
+echo "Installed in ${PWD}/bin" ;\
+rm -rf $$TMP_DIR ;\
+}
+endef
 
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 .PHONY: controller-gen
@@ -163,21 +176,21 @@ controller-gen: ## Download controller-gen locally if necessary.
 op-generate:
 	# The artist formerly known as `operator-sdk generate crds`:
 ifeq ($(CRD_VERSION), v1beta1)
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=deploy/crds/bases
 	# HACK: Due to an OLM bug in 3.11, we need to remove the
 	# spec.validation.openAPIV3Schema.type from CRDs. Remove once
 	# 3.11 is no longer supported.
-	find config/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} spec.validation.openAPIV3Schema.type
+	find deploy/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} spec.validation.openAPIV3Schema.type
 	# HACK: But removing that causes certain generated fields to
 	# fail validation in v4. The fields aren't needed, so remove
 	# them. We should be able to get rid of this as well when 3.11
 	# is no longer supported.
-	find config/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-list-map-keys'
-	find config/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-list-type'
-	find config/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-map-type'
-	find config/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-struct-type'
+	find deploy/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-list-map-keys'
+	find deploy/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-list-type'
+	find deploy/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-map-type'
+	find deploy/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-struct-type'
 else
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=deploy/crds/bases
 endif
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 

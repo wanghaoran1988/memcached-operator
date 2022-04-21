@@ -23,3 +23,8 @@ testbin/*
 *.swp
 *.swo
 *~
+.docker/
+.venv/
+Dockerfile.olm-registry
+saas-memcached-operator-bundle/
+

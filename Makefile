@@ -9,7 +9,7 @@ help: ## Display this help.
 
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
+run: 
 	go run ./main.go
 
 .PHONY: boilerplate-update

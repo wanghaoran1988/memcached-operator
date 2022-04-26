@@ -176,7 +176,7 @@ controller-gen: ## Download controller-gen locally if necessary.
 op-generate:
 	# The artist formerly known as `operator-sdk generate crds`:
 ifeq ($(CRD_VERSION), v1beta1)
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=deploy/crds
+	$(CONTROLLER_GEN) crd paths="./..." output:dir=../../deploy/crds
 	# HACK: Due to an OLM bug in 3.11, we need to remove the
 	# spec.validation.openAPIV3Schema.type from CRDs. Remove once
 	# 3.11 is no longer supported.
@@ -190,9 +190,9 @@ ifeq ($(CRD_VERSION), v1beta1)
 	find deploy/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-map-type'
 	find deploy/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-struct-type'
 else
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=deploy/crds
+	$(CONTROLLER_GEN) crd paths=./... output:dir=../../deploy/crds
 endif
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object paths=./...
 
 
 .PHONY: openapi-generate

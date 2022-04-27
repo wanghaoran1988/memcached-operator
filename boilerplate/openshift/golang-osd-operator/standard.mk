@@ -71,8 +71,10 @@ REGISTRY_TOKEN ?=
 
 BINFILE=build/_output/bin/$(OPERATOR_NAME)
 MAINPACKAGE = ./main.go
+API_DIR = $(NEW_API_DIR)
 ifeq ($(USE_OLD_SDK), TRUE)
 MAINPACKAGE = ./cmd/manager
+API_DIR = ./pkg/apis
 endif
 
 GOOS?=$(shell go env GOOS)
@@ -161,27 +163,32 @@ go-generate:
 
 # go-get-tool will 'go install' any package $2 and install it to $1.
 define go-get-tool
-@[ -f $(1) ] || { \
+@{ \
 set -e ;\
 TMP_DIR=$$(mktemp -d) ;\
 cd $$TMP_DIR ;\
 go mod init tmp ;\
 echo "Downloading $(2)" ;\
-GOBIN=$(1) go install $(2) ;\
+GOBIN=$(shell dirname $(1)) go install $(2) ;\
 echo "Installed in $(1)" ;\
 rm -rf $$TMP_DIR ;\
 }
 endef
 
-CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
+CONTROLLER_GEN = $(PWD)/bin/controller-gen
+CONTROLLER_GEN_VERSION = v0.8.0
+ifeq ($(USE_OLD_SDK), TRUE)
+CONTROLLER_GEN_VERSION = v0.3.0
+endif
+
 .PHONY: controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.8.0)
+	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_VERSION))
 
 .PHONY: op-generate
-op-generate:
+op-generate: controller-gen
 ifeq ($(CRD_VERSION), v1beta1)
-	$(CONTROLLER_GEN) crd paths="./..." output:dir=../../deploy/crds
+	cd $(API_DIR); $(CONTROLLER_GEN) crd paths="./..." output:dir=$(PWD)/deploy/crds
 	# HACK: Due to an OLM bug in 3.11, we need to remove the
 	# spec.validation.openAPIV3Schema.type from CRDs. Remove once
 	# 3.11 is no longer supported.
@@ -195,9 +202,9 @@ ifeq ($(CRD_VERSION), v1beta1)
 	find deploy/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-map-type'
 	find deploy/crds -name '*.yaml' | xargs -n1 -I{} yq d -i {} 'spec.**.x-kubernetes-struct-type'
 else
-	$(CONTROLLER_GEN) crd paths=./... output:dir=../../deploy/crds
+	cd $(API_DIR); $(CONTROLLER_GEN) crd paths=./... output:dir=$(PWD)/deploy/crds
 endif
-	$(CONTROLLER_GEN) object paths=./...
+	cd $(API_DIR); $(CONTROLLER_GEN) object paths=./...
 
 
 .PHONY: openapi-generate
@@ -249,12 +256,8 @@ SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 .PHONY: go-test
-go-test:
-ifeq ($(USE_OLD_SDK), TRUE)
-	${GOENV} go test $(TESTOPTS) $(TESTTARGETS)
-else
-	make envtest; KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test $(TESTOPTS) $(TESTTARGETS)
-endif
+go-test: envtest
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test $(TESTOPTS) $(TESTTARGETS)
 
 .PHONY: python-venv
 python-venv:

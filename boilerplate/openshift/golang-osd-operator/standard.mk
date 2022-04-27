@@ -46,6 +46,9 @@ OPERATOR_IMAGE_URI=${IMG}
 OPERATOR_IMAGE_URI_LATEST=$(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY)/$(IMAGE_NAME):latest
 OPERATOR_DOCKERFILE ?=build/Dockerfile
 REGISTRY_IMAGE=$(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY)/$(IMAGE_NAME)-registry
+#The api dir that latest osdk generated
+NEW_API_DIR=$(PWD)/api
+USE_OLD_SDK=$(shell if [[ -d "$(NEW_API_DIR)" ]];then echo FALSE;else echo TRUE;fi)
 
 # Consumer can optionally define ADDITIONAL_IMAGE_SPECS like:
 #     define ADDITIONAL_IMAGE_SPECS
@@ -67,7 +70,10 @@ REGISTRY_USER ?=
 REGISTRY_TOKEN ?=
 
 BINFILE=build/_output/bin/$(OPERATOR_NAME)
-MAINPACKAGE ?= ./main.go
+MAINPACKAGE = ./main.go
+ifeq ($(USE_OLD_SDK), TRUE)
+MAINPACKAGE = ./cmd/manager
+endif
 
 GOOS?=$(shell go env GOOS)
 GOARCH?=$(shell go env GOARCH)
@@ -161,8 +167,8 @@ TMP_DIR=$$(mktemp -d) ;\
 cd $$TMP_DIR ;\
 go mod init tmp ;\
 echo "Downloading $(2)" ;\
-GOBIN=${PWD}/bin go install $(2) ;\
-echo "Installed in ${PWD}/bin" ;\
+GOBIN=$(1) go install $(2) ;\
+echo "Installed in $(1)" ;\
 rm -rf $$TMP_DIR ;\
 }
 endef
@@ -174,7 +180,6 @@ controller-gen: ## Download controller-gen locally if necessary.
 
 .PHONY: op-generate
 op-generate:
-	# The artist formerly known as `operator-sdk generate crds`:
 ifeq ($(CRD_VERSION), v1beta1)
 	$(CONTROLLER_GEN) crd paths="./..." output:dir=../../deploy/crds
 	# HACK: Due to an OLM bug in 3.11, we need to remove the
@@ -197,7 +202,8 @@ endif
 
 .PHONY: openapi-generate
 openapi-generate:
-	find ./api/ -maxdepth 2 -mindepth 2 -type d | xargs -t -n1 -I% \
+ifeq ($(USE_OLD_SDK), TRUE)
+	find ./pkg/apis/ -maxdepth 2 -mindepth 2 -type d | xargs -t -n1 -I% \
 		openapi-gen --logtostderr=true \
 			-i % \
 			-o "" \
@@ -205,6 +211,18 @@ openapi-generate:
 			-p % \
 			-h /dev/null \
 			-r "-"
+else
+	find ./api -maxdepth 2 -mindepth 1 -type d | xargs -t -n1 -I% \
+		openapi-gen --logtostderr=true \
+			-i % \
+			-o "" \
+			-O zz_generated.openapi \
+			-p % \
+			-h /dev/null \
+			-r "-"
+endif
+	
+
 
 .PHONY: generate
 generate: op-generate go-generate openapi-generate
@@ -231,8 +249,12 @@ SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 .PHONY: go-test
-go-test: envtest
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
+go-test:
+ifeq ($(USE_OLD_SDK), TRUE)
+	${GOENV} go test $(TESTOPTS) $(TESTTARGETS)
+else
+	make envtest; KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test $(TESTOPTS) $(TESTTARGETS)
+endif
 
 .PHONY: python-venv
 python-venv:
